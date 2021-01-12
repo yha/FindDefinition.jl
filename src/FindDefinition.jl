@@ -13,19 +13,24 @@ ismoduledef(e::Expr) = e.head == :module
 isinclude(_) = false
 isinclude(e::Expr) = e.head == :call && e.args[1] == :include
 
+isquote(_) = false
+isquote(::QuoteNode) = true
+isquote(e::Expr) = e.head == :quote
+
 args(_) = []
 args(e::Expr) = e.args
 
-function collect_nodes(f, _module, ast)
+function collect_nodes(f, _module, ast; skip_quoted = true)
+    skip(arg) = skip_quoted && isquote(arg)
     init = f(ast) ? [(from_module = _module, ex = ast)] : []
     if ismoduledef(ast)
         modulename = ast.args[2]
         _module = getproperty(_module, modulename)
     end
-    reduce( ∪, collect_nodes(f, _module, arg) for arg in args(ast); init )
+    reduce( ∪, collect_nodes(f, _module, arg) for arg in args(ast) if !skip(arg); init )
 end
 
-collect_includefiles(_module, ast) = [(; from_module = mod, file = ex.args[2]::String)
+collect_includefiles(_module, ast) = [(; from_module = mod, file = ex.args[2])
                                             for (mod, ex) in collect_nodes(isinclude, _module, ast)]
 
 function parsefile(path, fromline = 1; greedy=true)
@@ -51,7 +56,15 @@ function rec_find_expr(f, _module, ast, includepath)
     res = collect_nodes(f, _module, ast)
     includes = collect_includefiles(_module, ast)
     for (mod, inc) in includes
+        if !(inc isa AbstractString)
+            @warn "Cannot resolve non-literal include `include($inc)` from module $mod. Skipped."
+            continue
+        end
         inc = joinpath(includepath, inc)
+        if !isfile(inc)
+            @warn "Included file not found: $inc."
+            continue
+        end
         for expr in parsefile(inc)
             append!(res, rec_find_expr(f, mod, expr, dirname(inc)))
         end
@@ -93,7 +106,7 @@ function find_definitions(method::Method)
     eval_method = only(methods(_module.eval))
     file, line = string(eval_method.file), eval_method.line
     module_def = only(parsefile(file, line; greedy=false))
-    res = LineNumberNode[]
+    res = []
     mcls = rec_find_expr(ismacrocall, _module, module_def, dirname(file))
     for (_module, macrocall) in mcls
         lnn = macrocall_linenumnode(macrocall)
@@ -101,8 +114,7 @@ function find_definitions(method::Method)
         funcdefs = collect_nodes(isfunctiondef, _module, expanded)
         for (_module, funcdef) in funcdefs
             if defines_this_method(_module, funcdef, method)
-                #push!(res, (lnn, funcdef))
-                push!(res, lnn)
+                push!(res, (; lnn, funcdef))
             end
         end
     end
@@ -111,7 +123,7 @@ end
 
 find_definitions(f::Function) = reduce( ∪, find_definitions(m) for m in methods(f) )
 
-finddef(m::Method) = last(find_definitions(m))
+finddef(m::Method) = last(find_definitions(m)).lnn
 finddefs(f::Function) = map(finddef, methods(f))
 
 end

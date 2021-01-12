@@ -8,30 +8,30 @@ barspath = joinpath(@__DIR__, "bars.jl")
 
 @testset "single macro call" begin
     bar1_methoddefs = FindDefinition.find_definitions(only(methods(Bar1.bar)))
-    bar1_funcdefs = finddefs(Bar1.bar)
+    bar1_func_lnns = finddefs(Bar1.bar)
     @test length(bar1_methoddefs) == 1
-    @test bar1_methoddefs == bar1_funcdefs
-    def = only(bar1_funcdefs)
-    @test string(def.file) == barspath
-    @test def.line == 6
+    @test [d.lnn for d in bar1_methoddefs] == bar1_func_lnns
+    lnn = only(bar1_func_lnns)
+    @test string(lnn.file) == barspath
+    @test lnn.line == 6
 end
 
 @testset "several calls" begin
     meths = methods(Bar2.bar)
     bar2_methoddefs = FindDefinition.find_definitions.(meths)
-    bar2_funcdefs = finddefs(Bar2.bar)
+    bar2_func_lnns = finddefs(Bar2.bar)
     @test length(bar2_methoddefs) == 2
     @test length(bar2_methoddefs[1]) == 2
     @test length(bar2_methoddefs[2]) == 1
-    @test length(bar2_funcdefs) == 2
-    @test all( all( string(lnn.file) == barspath for lnn in defs )
+    @test length(bar2_func_lnns) == 2
+    @test all( all( string(d.lnn.file) == barspath for d in defs )
                 for defs in bar2_methoddefs )
-    @test bar2_methoddefs[1][1].line == 12
-    @test bar2_methoddefs[1][2].line == 13
-    @test bar2_methoddefs[2][1].line == 14
+    @test bar2_methoddefs[1][1].lnn.line == 12
+    @test bar2_methoddefs[1][2].lnn.line == 13
+    @test bar2_methoddefs[2][1].lnn.line == 14
 
-    @test bar2_funcdefs[1].line == 13
-    @test bar2_funcdefs[2].line == 14
+    @test bar2_func_lnns[1].line == 13
+    @test bar2_func_lnns[2].line == 14
 end
 
 @testset "several definitions in one macro" begin
