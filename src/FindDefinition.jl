@@ -67,11 +67,16 @@ end
 # MacroTools.isdef is broken. See MacroTools issue #154
 isfunctiondef(ex) = trysplitdef(ex) != nothing
 
+dequalify(name) = name
+dequalify(name::Expr) = (@assert name.head == :(.); name.args[2].value)
+dequalify(name::GlobalRef) = name.name
 argtypes(method) = Base.tail(tuple(method.sig.types...))
 function defines_this_method(_module, ex, method)
     d = trysplitdef(ex)
     isnothing(d) && return false
-    get(d,:name,nothing) != method.name && return false
+    qualified_name = get(d,:name,nothing)
+    qualified_name == nothing && return false
+    dequalify(qualified_name) != method.name && return false
     # TODO should be possible without `eval`, using `Meta.lower`
     newname = gensym()
     d[:name] = newname
