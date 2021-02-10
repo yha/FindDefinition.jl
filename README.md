@@ -2,7 +2,7 @@
 *Locate methods defined through macros*
 
 Methods defined through macros unhelpfully report their file and line numbers as those inside the macro definition. For example, this
-```
+```julia
 # contents of foo.jl:
 module Foo
   macro foo()
@@ -18,7 +18,7 @@ bar()
 gives an `UndefVarError` with the stack trace pointing to line 3, rather than 6.
 
 This module provides functions `finddef(method)` and `finddefs(f::Function)` returning `LineNumberNode`s for the macro call sites:
-```
+```julia
 julia> using FindDefinition
 
 julia> finddef(first(methods(Foo.bar)))
