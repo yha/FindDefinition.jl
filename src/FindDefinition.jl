@@ -80,21 +80,41 @@ end
 # MacroTools.isdef is broken. See MacroTools issue #154
 isfunctiondef(ex) = trysplitdef(ex) != nothing
 
+istypeassertion(ex) = false
+istypeassertion(ex::Expr) = ex.head == :(::)
+
+isinterpolated(ex) = false
+isinterpolated(ex::Expr) = ex.head == :$
+
 dequalify(name) = name
-dequalify(name::Expr) = (@assert name.head == :(.); name.args[2].value)
+dequalify(name::Expr) = (name.head == :(.) || error("Not a qualified name: $name");
+                         name.args[2].value)
 dequalify(name::GlobalRef) = name.name
 argtypes(method) = Base.tail(tuple(method.sig.types...))
 function defines_this_method(_module, ex, method)
     d = trysplitdef(ex)
     isnothing(d) && return false
     qualified_name = get(d,:name,nothing)
-    qualified_name == nothing && return false
+    qualified_name === nothing && return false
+    istypeassertion(qualified_name) && return false # a type method definition, e.g. (foo::Foo)(x,y) = ...
+    if isinterpolated(qualified_name)
+        @warn "Cannot resolve interpolated function name $qualified_name in function definition $ex"
+        return false
+    end
     dequalify(qualified_name) != method.name && return false
     # TODO should be possible without `eval`, using `Meta.lower`
     newname = gensym()
     d[:name] = newname
     newexp = MacroTools.combinedef(d)
-    f = _module.eval(newexp)
+    f = try 
+        _module.eval(newexp)
+    catch e
+        @warn("Failed to evaluate symgen-ed function definition in module $_module.",
+                definition = newexp)
+        showerror(stderr, e, catch_backtrace())
+        println(stderr)
+        return false
+    end
     exmethod = only(methods(f))
     return argtypes(exmethod) == argtypes(method) &&
            Base.kwarg_decl(exmethod) == Base.kwarg_decl(method)
@@ -110,7 +130,15 @@ function find_definitions(method::Method)
     mcls = rec_find_expr(ismacrocall, _module, module_def, dirname(file))
     for (_module, macrocall) in mcls
         lnn = macrocall_linenumnode(macrocall)
-        expanded = macroexpand(_module, macrocall)
+        expanded = try
+            macroexpand(_module, macrocall)
+        catch e
+            @warn("Failed to expand macrocall in $_module:$lnn. Skipping.",
+                    macrocall=macrocall)
+            showerror(stderr, e, catch_backtrace())
+            println(stderr)
+            continue
+        end
         funcdefs = collect_nodes(isfunctiondef, _module, expanded)
         for (_module, funcdef) in funcdefs
             if defines_this_method(_module, funcdef, method)
