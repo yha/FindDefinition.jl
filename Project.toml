@@ -1,11 +1,11 @@
 name = "FindDefinition"
 uuid = "93ffb859-d6b2-40fc-9f9f-e7ec8bc255b8"
 authors = ["yha <yharel@campus.technion.ac.il>"]
-version = "0.1.0"
+version = "0.1.1"
 
 [deps]
 MacroTools = "1914dd2f-81c6-5fcd-8719-6d5c9610ff09"
 
 [compat]
-julia = "1.5"
+julia = "1.5, 1.6"
 MacroTools = "0.5"
